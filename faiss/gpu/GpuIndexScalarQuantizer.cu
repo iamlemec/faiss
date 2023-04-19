@@ -30,5 +30,23 @@ GpuIndexScalarQuantizer::GpuIndexScalarQuantizer(
 
 GpuIndexScalarQuantizer::~GpuIndexScalarQuantizer() {}
 
+void GpuIndexScalarQuantizer::train(idx_t n, const float* x) {}
+
+void GpuIndexScalarQuantizer::reset() {}
+
+bool GpuIndexScalarQuantizer::addImplRequiresIDs_() const {
+    return false;
+};
+
+void GpuIndexScalarQuantizer::addImpl_(idx_t n, const float* x, const idx_t* ids) {};
+
+void GpuIndexScalarQuantizer::searchImpl_(
+        idx_t n,
+        const float* x,
+        int k,
+        float* distances,
+        idx_t* labels,
+        const SearchParameters* params) const {};
+
 } // namespace gpu
 } // namespace faiss

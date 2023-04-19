@@ -52,26 +52,6 @@ struct GpuScalarQuantizer : public ScalarQuantizer {
     DeviceTensor<float, 1, true> gpuTrained;
 };
 
-/*
-struct GpuIndexScalarQuantizerBase {
-    GpuIndexScalarQuantizerBase(GpuResources* res, const IndexScalarQuantizer* index)
-        : gpuCodes(DeviceTensor<uint8_t, 1, true>(
-            res, makeDevAlloc(AllocType::Quantizer, 0), {(idx_t)index->codes.size()})) {
-        GpuScalarQuantizer* gpuSq = new GpuScalarQuantizer(res, index->sq);
-
-        HostTensor<uint8_t, 1, true> cpuCodes(
-            (uint8_t*)index->codes.data(), {(idx_t)index->codes.size()}
-        );
-
-        auto stream = res->getDefaultStreamCurrentDevice();
-        gpuCodes.copyFrom(cpuCodes, stream);
-    }
-
-    // on GPU codes
-    DeviceTensor<uint8_t, 1, true> gpuCodes;
-};
-*/
-
 //
 // Quantizer codecs
 //

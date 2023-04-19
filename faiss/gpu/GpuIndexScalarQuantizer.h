@@ -24,7 +24,23 @@ class GpuIndexScalarQuantizer : public GpuIndex {
 
     ~GpuIndexScalarQuantizer() override;
 
+    // trains the scalar quantizer based on the given vector data
+    void train(idx_t n, const float* x) override;
+
+    // does nothing in this case
+    void reset() override;
+
    protected:
+    bool addImplRequiresIDs_() const override;
+    void addImpl_(idx_t n, const float* x, const idx_t* ids) override;
+    void searchImpl_(
+            idx_t n,
+            const float* x,
+            int k,
+            float* distances,
+            idx_t* labels,
+            const SearchParameters* params) const override;
+
     // on GPU codes
     DeviceTensor<uint8_t, 1, true> gpuCodes;
 };
