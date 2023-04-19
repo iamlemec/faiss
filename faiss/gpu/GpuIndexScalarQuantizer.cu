@@ -1,6 +1,5 @@
 #include <faiss/gpu/GpuIndexScalarQuantizer.h>
 #include <faiss/gpu/utils/HostTensor.cuh>
-#include <faiss/gpu/impl/GpuScalarQuantizer.cuh>
 
 namespace faiss {
 namespace gpu {
@@ -17,8 +16,9 @@ GpuIndexScalarQuantizer::GpuIndexScalarQuantizer(
         gpuCodes(provider->getResources().get(),
                 makeDevAlloc(AllocType::Quantizer, 0),
                 {(idx_t)index->codes.size()}) {
+
     GpuResources* res = provider->getResources().get();
-    GpuScalarQuantizer* gpuSq = new GpuScalarQuantizer(res, index->sq);
+    gpuSq = new GpuScalarQuantizer(res, index->sq);
 
     HostTensor<uint8_t, 1, true> cpuCodes(
         (uint8_t*)index->codes.data(), {(idx_t)index->codes.size()}
@@ -29,6 +29,13 @@ GpuIndexScalarQuantizer::GpuIndexScalarQuantizer(
 }
 
 GpuIndexScalarQuantizer::~GpuIndexScalarQuantizer() {}
+
+void GpuIndexScalarQuantizer::reconstruct_batch(idx_t n, const idx_t* keys, float* recons) const {
+    Codec<ScalarQuantizer::QuantizerType::QT_8bit, 1> codec(
+        gpuSq->code_size,
+        gpuSq->gpuTrained.data(),
+        gpuSq->gpuTrained.data() + gpuSq->d);
+}
 
 void GpuIndexScalarQuantizer::train(idx_t n, const float* x) {}
 
