@@ -13,6 +13,7 @@
 #include <faiss/gpu/utils/HostTensor.cuh>
 #include <faiss/gpu/utils/PtxUtils.cuh>
 #include <faiss/gpu/utils/WarpShuffles.cuh>
+#include <faiss/gpu/utils/StaticUtils.h>
 
 namespace faiss {
 namespace gpu {
@@ -51,6 +52,36 @@ struct GpuScalarQuantizer : public ScalarQuantizer {
     // ScalarQuantizer::trained copied to GPU memory
     DeviceTensor<float, 1, true> gpuTrained;
 };
+
+// Number of warps we create per block of ScalarQuantizer
+constexpr int kScalarQuantizerWarps = 4;
+
+// numVecs must be multiple of 32
+template <typename Codec>
+__global__ void decodeWithCodec(Codec codec, idx_t numVecs, int dim, const idx_t* keys, void* codes, float* out) {
+    // initialize shared memory with the quantizer
+    extern __shared__ float smem[];
+    codec.initKernel(smem, dim);
+    __syncthreads();
+
+    // each warp handles a separate chunk of vectors
+    int warpId = threadIdx.x / kWarpSize;
+    int laneId = threadIdx.x % kWarpSize;
+
+    // divide the set of vectors among the warps
+    idx_t vecsPerWarp = utils::divUp(numVecs, kScalarQuantizerWarps);
+    idx_t vecStart = vecsPerWarp * warpId;
+    idx_t vecEnd = vecsPerWarp * (warpId + 1);
+
+    // walk the list of vectors for this warp
+    for (idx_t vec = vecStart; vec < vecEnd; ++vec) {
+        for (int d = laneId; d < dim; d += kWarpSize) {
+            idx_t pos = keys[vec];
+            float* out1 = &out[pos * dim + d];
+            codec.decode(codes, vec, d, out1);
+        }
+    }
+}
 
 //
 // Quantizer codecs

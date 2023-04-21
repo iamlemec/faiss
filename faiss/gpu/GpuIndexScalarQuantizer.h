@@ -4,7 +4,6 @@
 #include <faiss/gpu/GpuResources.h>
 #include <faiss/IndexScalarQuantizer.h>
 #include <faiss/gpu/utils/DeviceTensor.cuh>
-#include <faiss/gpu/impl/GpuScalarQuantizer.cuh>
 
 namespace faiss {
 namespace gpu {
@@ -45,8 +44,11 @@ class GpuIndexScalarQuantizer : public GpuIndex {
             idx_t* labels,
             const SearchParameters* params) const override;
 
-    // on GPU quantizer
-    GpuScalarQuantizer* gpuSq;
+    // store ScalarQuantizer::trained on the CPU
+    faiss::ScalarQuantizer sq;
+
+    // ScalarQuantizer::trained copied to GPU memory
+    DeviceTensor<float, 1, true> gpuTrained;
 
     // on GPU codes
     DeviceTensor<uint8_t, 1, true> gpuCodes;

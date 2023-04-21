@@ -1,5 +1,7 @@
 #include <faiss/gpu/GpuIndexScalarQuantizer.h>
 #include <faiss/gpu/utils/HostTensor.cuh>
+#include <faiss/gpu/utils/CopyUtils.cuh>
+#include <faiss/gpu/impl/GpuScalarQuantizer.cuh>
 
 namespace faiss {
 namespace gpu {
@@ -13,28 +15,64 @@ GpuIndexScalarQuantizer::GpuIndexScalarQuantizer(
                 index->d,
                 index->metric_type,
                 index->metric_arg, config),
+        sq(index->sq),
         gpuCodes(provider->getResources().get(),
                 makeDevAlloc(AllocType::Quantizer, 0),
-                {(idx_t)index->codes.size()}) {
+                {(idx_t)index->codes.size()}),
+        gpuTrained(provider->getResources().get(),
+                makeDevAlloc(AllocType::Quantizer, 0),
+                {(idx_t)index->sq.trained.size()}) {
 
     GpuResources* res = provider->getResources().get();
-    gpuSq = new GpuScalarQuantizer(res, index->sq);
+    auto stream = res->getDefaultStreamCurrentDevice();
+
+    HostTensor<float, 1, true> cpuTrained(
+        (float*)sq.trained.data(), {(idx_t)sq.trained.size()}
+    );
+    gpuTrained.copyFrom(cpuTrained, stream);
 
     HostTensor<uint8_t, 1, true> cpuCodes(
         (uint8_t*)index->codes.data(), {(idx_t)index->codes.size()}
     );
-
-    auto stream = res->getDefaultStreamCurrentDevice();
     gpuCodes.copyFrom(cpuCodes, stream);
 }
 
 GpuIndexScalarQuantizer::~GpuIndexScalarQuantizer() {}
 
-void GpuIndexScalarQuantizer::reconstruct_batch(idx_t n, const idx_t* keys, float* recons) const {
+void GpuIndexScalarQuantizer::reconstruct_batch(idx_t n, const idx_t* keys, float* out) const {
+    // get gpu resources
+    DeviceScope scope(config_.device);
+    auto stream = resources_->getDefaultStream(config_.device);
+
+    // number of vector dimensions
+    int dim = sq.d;
+
+    // set up keys on device
+    auto keysDevice = toDeviceTemporary<faiss::idx_t, 1>(
+        resources_.get(), config_.device, const_cast<idx_t*>(keys), stream, {n}
+    );
+
+    // set up output on device
+    auto outDevice = toDeviceTemporary<float, 2>(
+        resources_.get(), config_.device, out, stream, {n, dim}
+    );
+
+    // make codec
     Codec<ScalarQuantizer::QuantizerType::QT_8bit, 1> codec(
-        gpuSq->code_size,
-        gpuSq->gpuTrained.data(),
-        gpuSq->gpuTrained.data() + gpuSq->d);
+        sq.code_size, gpuTrained.data(), gpuTrained.data() + dim
+    );
+
+    // determine block size and layout
+    idx_t blockSize = kWarpSize * kScalarQuantizerWarps;
+    idx_t numBlocks = utils::divUp(n, blockSize);
+    FAISS_ASSERT(n % blockSize == 0);
+
+    // launch kernel
+    auto grid = dim3(numBlocks);
+    auto block = dim3(blockSize);
+    decodeWithCodec<<<grid, block, codec.getSmemSize(dim), stream>>>(
+        codec, n, dim, keysDevice.data(), (void*)gpuCodes.data(), outDevice.data()
+    );
 }
 
 void GpuIndexScalarQuantizer::train(idx_t n, const float* x) {}
