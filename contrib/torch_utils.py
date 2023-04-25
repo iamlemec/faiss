@@ -319,6 +319,44 @@ def handle_torch_Index(the_class):
 
         return x
 
+    def torch_replacement_reconstruct_batch(self, keys, x=None):
+        # No tensor inputs are required, but with importing this module, we
+        # assume that the default should be torch tensors. If we are passed a
+        # numpy array, however, assume that the user is overriding this default
+        if (x is not None) and (type(x) is np.ndarray):
+            # Forward to faiss __init__.py base method
+            return self.reconstruct_batch_numpy(keys, x)
+
+        # If the index is a CPU index, the default device is CPU, otherwise we
+        # produce a GPU tensor
+        device = torch.device('cpu')
+        if hasattr(self, 'getDevice'):
+            # same device as the index
+            device = torch.device('cuda', self.getDevice())
+
+        assert type(keys) is torch.Tensor
+        (n, ) = keys.shape
+        keys_ptr = swig_ptr_from_IndicesTensor(keys)
+
+        if x is None:
+            x = torch.empty(n, self.d, device=device, dtype=torch.float32)
+        else:
+            assert type(x) is torch.Tensor
+            assert x.shape == (n, self.d)
+        x_ptr = swig_ptr_from_FloatTensor(x)
+
+        if x.is_cuda:
+            assert hasattr(self, 'getDevice'), 'GPU tensor on CPU index not allowed'
+
+            # On the GPU, use proper stream ordering
+            with using_stream(self.getResources()):
+                self.reconstruct_batch_c(n, keys_ptr, x_ptr)
+        else:
+            # CPU torch
+            self.reconstruct_batch_c(n, keys_ptr, x_ptr)
+
+        return x
+
     def torch_replacement_reconstruct_n(self, n0=0, ni=-1, x=None):
         if ni == -1:
             ni = self.ntotal
@@ -473,6 +511,7 @@ def handle_torch_Index(the_class):
     torch_replace_method(the_class, 'search', torch_replacement_search)
     torch_replace_method(the_class, 'remove_ids', torch_replacement_remove_ids)
     torch_replace_method(the_class, 'reconstruct', torch_replacement_reconstruct)
+    torch_replace_method(the_class, 'reconstruct_batch', torch_replacement_reconstruct_batch)
     torch_replace_method(the_class, 'reconstruct_n', torch_replacement_reconstruct_n)
     torch_replace_method(the_class, 'range_search', torch_replacement_range_search)
     torch_replace_method(the_class, 'update_vectors', torch_replacement_update_vectors,

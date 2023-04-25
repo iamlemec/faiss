@@ -73,6 +73,9 @@ void GpuIndexScalarQuantizer::reconstruct_batch(idx_t n, const idx_t* keys, floa
     decodeWithCodec<<<grid, block, codec.getSmemSize(dim), stream>>>(
         codec, n, dim, keysDevice.data(), (void*)gpuCodes.data(), outDevice.data()
     );
+
+    // copy back to host if needed
+    fromDevice<float, 2>(outDevice, out, stream);
 }
 
 void GpuIndexScalarQuantizer::train(idx_t n, const float* x) {}
