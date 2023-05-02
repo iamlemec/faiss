@@ -70,13 +70,19 @@ void GpuIndexScalarQuantizer::reconstruct_batch(idx_t n, const idx_t* keys, floa
     // launch kernel
     auto grid = dim3(numBlocks);
     auto block = dim3(blockSize);
-    decodeWithCodec<<<grid, block, codec.getSmemSize(dim), stream>>>(
+    reconstructWithCodec<<<grid, block, codec.getSmemSize(dim), stream>>>(
         codec, n, dim, keysDevice.data(), (void*)gpuCodes.data(), outDevice.data()
     );
 
     // copy back to host if needed
     fromDevice<float, 2>(outDevice, out, stream);
 }
+
+void GpuIndexScalarQuantizer::sa_encode(idx_t n, const float* x, uint8_t* bytes) const {};
+
+void GpuIndexScalarQuantizer::sa_decode(idx_t n, const uint8_t* bytes, float* x) const {};
+
+// not trainable or searchable right now
 
 void GpuIndexScalarQuantizer::train(idx_t n, const float* x) {}
 

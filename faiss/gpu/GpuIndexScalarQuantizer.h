@@ -33,6 +33,12 @@ class GpuIndexScalarQuantizer : public GpuIndex {
     // reconstructs a vector from its codes
     void reconstruct_batch(idx_t n, const idx_t* keys, float* recons) const;
 
+    // encode a set of vectors
+    void sa_encode(idx_t n, const float* x, uint8_t* bytes) const;
+
+    // decode a set of vectors
+    void sa_decode(idx_t n, const uint8_t* bytes, float* x) const;
+
    protected:
     bool addImplRequiresIDs_() const override;
     void addImpl_(idx_t n, const float* x, const idx_t* ids) override;

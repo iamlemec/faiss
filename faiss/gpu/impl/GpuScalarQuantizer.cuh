@@ -56,9 +56,9 @@ struct GpuScalarQuantizer : public ScalarQuantizer {
 // Number of warps we create per block of ScalarQuantizer
 constexpr int kScalarQuantizerWarps = 4;
 
-// numVecs must be multiple of 32
+// run decoder for batch of index codes
 template <typename Codec>
-__global__ void decodeWithCodec(Codec codec, idx_t numVecs, int dim, const idx_t* keys, void* codes, float* out) {
+__global__ void reconstructWithCodec(Codec codec, idx_t numVecs, int dim, const idx_t* keys, void* codes, float* out) {
     // initialize shared memory with the quantizer
     extern __shared__ float smem[];
     codec.initKernel(smem, dim);
@@ -71,13 +71,39 @@ __global__ void decodeWithCodec(Codec codec, idx_t numVecs, int dim, const idx_t
     // divide the set of vectors among the warps
     idx_t vecsPerWarp = utils::divUp(numVecs, kScalarQuantizerWarps);
     idx_t vecStart = vecsPerWarp * warpId;
-    idx_t vecEnd = vecsPerWarp * (warpId + 1);
+    idx_t vecEnd = min(vecsPerWarp * (warpId + 1), numVecs);
 
     // walk the list of vectors for this warp
     for (idx_t vec = vecStart; vec < vecEnd; ++vec) {
         for (int d = laneId; d < dim; d += kWarpSize) {
             idx_t pos = keys[vec];
             float* out1 = &out[pos * dim + d];
+            codec.decode(codes, vec, d, out1);
+        }
+    }
+}
+
+// run decoder for batch of given codes
+template <typename Codec>
+__global__ void decodeWithCodec(Codec codec, idx_t numVecs, int dim, void* codes, float* out) {
+    // initialize shared memory with the quantizer
+    extern __shared__ float smem[];
+    codec.initKernel(smem, dim);
+    __syncthreads();
+
+    // each warp handles a separate chunk of vectors
+    int warpId = threadIdx.x / kWarpSize;
+    int laneId = threadIdx.x % kWarpSize;
+
+    // divide the set of vectors among the warps
+    idx_t vecsPerWarp = utils::divUp(numVecs, kScalarQuantizerWarps);
+    idx_t vecStart = vecsPerWarp * warpId;
+    idx_t vecEnd = min(vecsPerWarp * (warpId + 1), numVecs);
+
+    // walk the list of vectors for this warp
+    for (idx_t vec = vecStart; vec < vecEnd; ++vec) {
+        for (int d = laneId; d < dim; d += kWarpSize) {
+            float* out1 = &out[vec * dim + d];
             codec.decode(codes, vec, d, out1);
         }
     }
